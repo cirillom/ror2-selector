@@ -1,0 +1,48 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: ror2-selector-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_PATH: /data/ror2-selector.sqlite3
+      ROOT_PATH: /api
+      TZ: America/Sao_Paulo
+    volumes:
+      - ${ROR2_DATA_DIR:-ror2-data}:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - proxy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: ror2-selector-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - proxy
+
+volumes:
+  ror2-data:
+
+networks:
+  proxy:
+    external: true
