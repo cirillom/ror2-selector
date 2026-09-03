@@ -1,0 +1,13 @@
+data-dev/
+__pycache__/
+*.pyc
+.DS_Store
+
+.env
+*.sqlite
+*.sqlite-*
+
+.git/
+backend/tests/
+docker-compose*.yml
+README.md

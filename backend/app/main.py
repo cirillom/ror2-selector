@@ -3,9 +3,11 @@ from __future__ import annotations
 import os
 import sqlite3
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi.staticfiles import StaticFiles
 
 from .database import Database
 from .schemas import (
@@ -71,27 +73,32 @@ def create_app(database_path: str | None = None) -> FastAPI:
         yield
 
     app = FastAPI(
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    api = FastAPI(
         title="Risk of Rain 2 Eclipse Selector API",
         version="1.0.0",
         description="CRUD API for players, survivors, and Eclipse progress.",
-        root_path=os.getenv("ROOT_PATH", ""),
-        lifespan=lifespan,
     )
     app.state.database = database
+    api.state.database = database
 
-    @app.get("/health", tags=["system"])
+    @api.get("/health", tags=["system"])
     def health(db: DatabaseDependency) -> dict[str, str]:
         with db.connection() as connection:
             connection.execute("SELECT 1").fetchone()
         return {"status": "ok"}
 
-    @app.get("/users", response_model=list[UserRead], tags=["users"])
+    @api.get("/users", response_model=list[UserRead], tags=["users"])
     def list_users(db: DatabaseDependency) -> list[dict]:
         with db.connection() as connection:
             rows = connection.execute("SELECT * FROM users ORDER BY name").fetchall()
         return [dict(row) for row in rows]
 
-    @app.post(
+    @api.post(
         "/users",
         response_model=UserRead,
         status_code=status.HTTP_201_CREATED,
@@ -118,7 +125,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except sqlite3.IntegrityError as error:
             raise _integrity_error(error) from error
 
-    @app.get("/users/{user_id}", response_model=UserRead, tags=["users"])
+    @api.get("/users/{user_id}", response_model=UserRead, tags=["users"])
     def get_user(user_id: int, db: DatabaseDependency) -> dict:
         with db.connection() as connection:
             row = _row_or_404(
@@ -129,7 +136,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             )
         return dict(row)
 
-    @app.patch("/users/{user_id}", response_model=UserRead, tags=["users"])
+    @api.patch("/users/{user_id}", response_model=UserRead, tags=["users"])
     def update_user(
         user_id: int, payload: UserUpdate, db: DatabaseDependency
     ) -> dict:
@@ -152,7 +159,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except sqlite3.IntegrityError as error:
             raise _integrity_error(error) from error
 
-    @app.delete(
+    @api.delete(
         "/users/{user_id}",
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["users"],
@@ -164,7 +171,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 raise HTTPException(status_code=404, detail="User not found")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @app.post("/users/{user_id}/reset", response_model=UserProgress, tags=["users"])
+    @api.post("/users/{user_id}/reset", response_model=UserProgress, tags=["users"])
     def reset_user(user_id: int, db: DatabaseDependency) -> UserProgress:
         with db.connection() as connection, connection:
             user = _row_or_404(
@@ -184,7 +191,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             rows = _progress_rows(connection, user_id)
         return _progress_response(user, rows)
 
-    @app.get(
+    @api.get(
         "/users/{user_id}/progress", response_model=UserProgress, tags=["users"]
     )
     def get_user_progress(user_id: int, db: DatabaseDependency) -> UserProgress:
@@ -198,7 +205,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             rows = _progress_rows(connection, user_id)
         return _progress_response(user, rows)
 
-    @app.get(
+    @api.get(
         "/survivors", response_model=list[SurvivorRead], tags=["survivors"]
     )
     def list_survivors(db: DatabaseDependency) -> list[dict]:
@@ -206,7 +213,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             rows = connection.execute("SELECT * FROM survivors ORDER BY id").fetchall()
         return [dict(row) for row in rows]
 
-    @app.post(
+    @api.post(
         "/survivors",
         response_model=SurvivorRead,
         status_code=status.HTTP_201_CREATED,
@@ -240,7 +247,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except sqlite3.IntegrityError as error:
             raise _integrity_error(error) from error
 
-    @app.get(
+    @api.get(
         "/survivors/{survivor_id}",
         response_model=SurvivorRead,
         tags=["survivors"],
@@ -255,7 +262,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             )
         return dict(row)
 
-    @app.patch(
+    @api.patch(
         "/survivors/{survivor_id}",
         response_model=SurvivorRead,
         tags=["survivors"],
@@ -291,7 +298,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except sqlite3.IntegrityError as error:
             raise _integrity_error(error) from error
 
-    @app.delete(
+    @api.delete(
         "/survivors/{survivor_id}",
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["survivors"],
@@ -305,7 +312,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 raise HTTPException(status_code=404, detail="Survivor not found")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @app.get(
+    @api.get(
         "/eclipse-levels",
         response_model=list[EclipseLevelRead],
         tags=["eclipse levels"],
@@ -331,7 +338,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             ).fetchall()
         return [_eclipse_from_row(row) for row in rows]
 
-    @app.post(
+    @api.post(
         "/eclipse-levels",
         response_model=EclipseLevelRead,
         status_code=status.HTTP_201_CREATED,
@@ -362,7 +369,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except sqlite3.IntegrityError as error:
             raise _integrity_error(error) from error
 
-    @app.post(
+    @api.post(
         "/eclipse-levels/party-win",
         response_model=list[EclipseLevelRead],
         tags=["eclipse levels"],
@@ -409,7 +416,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             for eclipse_level_id in payload.eclipse_level_ids
         ]
 
-    @app.get(
+    @api.get(
         "/eclipse-levels/{eclipse_level_id}",
         response_model=EclipseLevelRead,
         tags=["eclipse levels"],
@@ -427,7 +434,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             )
         return _eclipse_from_row(row)
 
-    @app.patch(
+    @api.patch(
         "/eclipse-levels/{eclipse_level_id}",
         response_model=EclipseLevelRead,
         tags=["eclipse levels"],
@@ -465,7 +472,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except sqlite3.IntegrityError as error:
             raise _integrity_error(error) from error
 
-    @app.delete(
+    @api.delete(
         "/eclipse-levels/{eclipse_level_id}",
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["eclipse levels"],
@@ -481,6 +488,14 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 raise HTTPException(status_code=404, detail="Eclipse level not found")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    app.mount("/api", api)
+    frontend_dir = Path(
+        os.getenv(
+            "FRONTEND_DIR",
+            str(Path(__file__).resolve().parents[2] / "frontend"),
+        )
+    )
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
     return app
 
 

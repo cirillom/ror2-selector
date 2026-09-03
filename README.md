@@ -1,62 +1,64 @@
 # Risk of Rain 2 Eclipse Selector
 
-Two-container Eclipse progress tracker and survivor roulette:
+Single-container Eclipse progress tracker and survivor roulette. FastAPI serves
+both the SQLite-backed API and the static HTML/CSS/JavaScript frontend from one
+Docker image.
 
-- `frontend`: static HTML/CSS/JavaScript served by BusyBox HTTPD
-- `backend`: FastAPI CRUD API backed by SQLite
+The first startup seeds the 18 official survivors and the profiles `Jogador 1`
+and `Amigo`. New users and survivors automatically receive the corresponding
+Eclipse progress records.
 
-All public routing and TLS termination live in the single edge configuration at
-`../edge/nginx/conf.d/ror2.cirillo.conf`. Neither application container has an
-Nginx configuration.
+The frontend bundles all survivor portraits locally. Party mode accepts up to
+four profiles and draws independently for each player, so the same survivor may
+be assigned more than once. A party victory advances every assignment in one
+database transaction. DLC filters apply to the grid, totals, and both roulette
+modes.
 
-The first startup seeds the 18 survivors from the original selector and the
-profiles `Jogador 1` and `Amigo`. New users and survivors automatically receive
-the corresponding Eclipse progress records.
-
-The frontend bundles the 18 survivor portraits locally. Party mode accepts up
-to four profiles and draws independently from each player's available or
-lowest-Eclipse survivors, so the same survivor may be assigned more than once.
-The DLC selector starts with all content enabled and filters the survivor grid,
-progress total, solo roulette, and party roulette together.
-The portrait files come from the corresponding file pages on the
-[Risk of Rain 2 Wiki](https://riskofrain2.wiki.gg/wiki/Category:Survivors).
-
-## Run
+## Develop
 
 ```bash
-docker compose --env-file ../.env up -d --build
+docker compose up --build
 ```
 
-Open:
+Open `http://localhost:8000`. Development data is stored in `./data-dev`,
+which is ignored by Git. API documentation is available at
+`http://localhost:8000/api/docs`.
 
-- Selector: `https://ror2.cirillo` or `https://ror2.lan.cirillo`
-- Interactive API documentation: `https://ror2.cirillo/api/docs`
-- API health check: `https://ror2.cirillo/api/health`
-
-The homelab reverse-proxy vhost is stored at
-`../edge/nginx/conf.d/ror2.cirillo.conf`. After starting the selector for the
-first time, regenerate the SAN certificate and reload edge Nginx with:
+Run the backend tests from the repository root with:
 
 ```bash
-sudo ../scripts/bin/regen-cert
+python -m pip install -r backend/requirements-dev.txt
+python -m pytest -q backend/tests
 ```
 
-Pi-hole already resolves both names through the existing wildcard rules.
+## Release
 
-Use the same `--env-file ../.env` option with other Compose commands.
+Version tags trigger `.github/workflows/release.yml`. The workflow builds the
+single image, publishes `latest` and the version tag to GHCR, and creates a
+GitHub Release containing `docker-compose.example.yml`.
 
-## Configuration
-
-To use a host bind mount instead of the managed Docker volume, place this
-optional variable in the repository root `.env` file:
-
-```dotenv
-ROR2_DATA_DIR=/mnt/hdd/ror2-selector/data
+```bash
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-Without `ROR2_DATA_DIR`, Compose stores SQLite in the managed `ror2-data` volume.
-Both containers join the existing external `proxy` network and publish no host
-ports; edge Nginx is their only public entry point.
+Published images use `ghcr.io/cirillom/ror2-selector`.
+
+## Deploy
+
+The homeserver does not build application code. Copy
+`docker-compose.example.yml` to
+`/home/cirillo/services/ror2-selector/docker-compose.yml`, then run:
+
+```bash
+cd /home/cirillo/services/ror2-selector
+docker compose pull
+docker compose up -d
+```
+
+Persistent SQLite data lives in `/mnt/hdd/ror2-selector/data`. The container
+joins the external `proxy` network and exposes port 8000 only to that network.
+TLS and public routing remain the responsibility of the homeserver edge proxy.
 
 ## Data model
 
@@ -99,13 +101,4 @@ The party-win endpoint advances up to four assigned players in one transaction;
 winning at Eclipse 8 marks that survivor as completed.
 
 The complete request and response schemas are available in Swagger UI at
-`/api/docs` through edge Nginx.
-
-## Backend tests
-
-From `backend/`, install the development dependencies and run:
-
-```bash
-python -m pip install -r requirements-dev.txt
-pytest
-```
+`/api/docs`.
