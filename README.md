@@ -92,7 +92,11 @@ Convenience endpoints used by the website:
 ```text
 GET  /api/users/{user_id}/progress
 POST /api/users/{user_id}/reset
+POST /api/eclipse-levels/party-win
 ```
+
+The party-win endpoint advances up to four assigned players in one transaction;
+winning at Eclipse 8 marks that survivor as completed.
 
 The complete request and response schemas are available in Swagger UI at
 `/api/docs` through edge Nginx.

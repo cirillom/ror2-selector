@@ -12,6 +12,7 @@ from .schemas import (
     EclipseLevelCreate,
     EclipseLevelRead,
     EclipseLevelUpdate,
+    PartyWinRequest,
     ProgressEntry,
     SurvivorCreate,
     SurvivorRead,
@@ -360,6 +361,53 @@ def create_app(database_path: str | None = None) -> FastAPI:
             return _eclipse_from_row(row)
         except sqlite3.IntegrityError as error:
             raise _integrity_error(error) from error
+
+    @app.post(
+        "/eclipse-levels/party-win",
+        response_model=list[EclipseLevelRead],
+        tags=["eclipse levels"],
+    )
+    def record_party_win(
+        payload: PartyWinRequest, db: DatabaseDependency
+    ) -> list[EclipseLevelRead]:
+        placeholders = ", ".join("?" for _ in payload.eclipse_level_ids)
+        with db.connection() as connection, connection:
+            rows = connection.execute(
+                f"SELECT * FROM eclipse_levels WHERE id IN ({placeholders})",
+                payload.eclipse_level_ids,
+            ).fetchall()
+            if len(rows) != len(payload.eclipse_level_ids):
+                raise HTTPException(
+                    status_code=404,
+                    detail="One or more Eclipse levels were not found",
+                )
+            if len({row["user_id"] for row in rows}) != len(rows):
+                raise HTTPException(
+                    status_code=409,
+                    detail="A party win can update each user only once",
+                )
+
+            connection.execute(
+                f"""
+                UPDATE eclipse_levels
+                SET
+                    level = CASE WHEN level < 8 THEN level + 1 ELSE level END,
+                    completed = CASE WHEN level = 8 THEN 1 ELSE completed END,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id IN ({placeholders})
+                """,
+                payload.eclipse_level_ids,
+            )
+            updated_rows = connection.execute(
+                f"SELECT * FROM eclipse_levels WHERE id IN ({placeholders})",
+                payload.eclipse_level_ids,
+            ).fetchall()
+
+        by_id = {row["id"]: row for row in updated_rows}
+        return [
+            _eclipse_from_row(by_id[eclipse_level_id])
+            for eclipse_level_id in payload.eclipse_level_ids
+        ]
 
     @app.get(
         "/eclipse-levels/{eclipse_level_id}",

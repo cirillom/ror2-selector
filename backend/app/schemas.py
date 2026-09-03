@@ -95,6 +95,19 @@ class EclipseLevelUpdate(BaseModel):
         return self
 
 
+class PartyWinRequest(BaseModel):
+    eclipse_level_ids: list[int] = Field(min_length=1, max_length=4)
+
+    @field_validator("eclipse_level_ids")
+    @classmethod
+    def validate_eclipse_level_ids(cls, values: list[int]) -> list[int]:
+        if any(value <= 0 for value in values):
+            raise ValueError("eclipse level IDs must be positive")
+        if len(values) != len(set(values)):
+            raise ValueError("eclipse level IDs must be unique")
+        return values
+
+
 class EclipseLevelRead(BaseModel):
     id: int
     user_id: int

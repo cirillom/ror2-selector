@@ -86,3 +86,51 @@ def test_constraints_and_survivor_fanout(tmp_path: Path) -> None:
 
         assert client.delete(f"/survivors/{survivor_id}").status_code == 204
         assert client.get(f"/survivors/{survivor_id}").status_code == 404
+
+
+def test_party_win_advances_every_player_atomically(tmp_path: Path) -> None:
+    app = create_app(str(tmp_path / "test.sqlite3"))
+
+    with TestClient(app) as client:
+        users = client.get("/users").json()
+        first_user_id = users[0]["id"]
+        second_user_id = users[1]["id"]
+        first = client.get(f"/users/{first_user_id}/progress").json()["levels"][0]
+        second = client.get(f"/users/{second_user_id}/progress").json()["levels"][0]
+        first_eclipse_id = first["eclipse_level_id"]
+        second_eclipse_id = second["eclipse_level_id"]
+
+        client.patch(
+            f"/eclipse-levels/{first_eclipse_id}",
+            json={"level": 7},
+        )
+        client.patch(
+            f"/eclipse-levels/{second_eclipse_id}",
+            json={"level": 8},
+        )
+
+        response = client.post(
+            "/eclipse-levels/party-win",
+            json={
+                "eclipse_level_ids": [
+                    first_eclipse_id,
+                    second_eclipse_id,
+                ]
+            },
+        )
+        assert response.status_code == 200
+        assert [(item["level"], item["completed"]) for item in response.json()] == [
+            (8, False),
+            (8, True),
+        ]
+
+        missing_response = client.post(
+            "/eclipse-levels/party-win",
+            json={"eclipse_level_ids": [first_eclipse_id, 99999]},
+        )
+        assert missing_response.status_code == 404
+        unchanged = client.get(
+            f"/eclipse-levels/{first_eclipse_id}"
+        ).json()
+        assert unchanged["level"] == 8
+        assert unchanged["completed"] is False

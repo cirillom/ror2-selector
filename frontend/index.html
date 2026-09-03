@@ -423,6 +423,27 @@
       margin-top: 3px;
     }
 
+    .party-actions {
+      display: flex;
+      justify-content: center;
+      margin-top: 14px;
+    }
+
+    .party-actions[hidden] {
+      display: none;
+    }
+
+    .btn-party-win {
+      background: linear-gradient(135deg, #15803d, #22c55e);
+      color: #fff;
+      min-width: 210px;
+    }
+
+    .btn-party-win:hover:not(:disabled) {
+      box-shadow: 0 0 18px rgba(34, 197, 94, 0.42);
+      transform: translateY(-2px);
+    }
+
     .grid {
       display: grid;
       gap: 14px;
@@ -660,6 +681,9 @@
     <div class="party-users" id="partyUsers"></div>
     <p class="party-hint">Selecione até quatro perfis e use um dos botões de sorteio acima.</p>
     <div class="party-results" id="partyResults" aria-live="polite"></div>
+    <div class="party-actions" id="partyActions" hidden>
+      <button id="partyWinBtn" class="main-btn btn-party-win" type="button">🏆 Registrar vitória</button>
+    </div>
   </section>
 
   <main class="grid" id="survivorGrid">
@@ -698,6 +722,8 @@
       partyUsers: document.getElementById("partyUsers"),
       partyCount: document.getElementById("partyCount"),
       partyResults: document.getElementById("partyResults"),
+      partyActions: document.getElementById("partyActions"),
+      partyWinBtn: document.getElementById("partyWinBtn"),
       grid: document.getElementById("survivorGrid"),
       statusPanel: document.getElementById("statusPanel"),
       toast: document.getElementById("toast")
@@ -709,6 +735,7 @@
     let rollingTimer = null;
     let toastTimer = null;
     let partyMode = false;
+    let partyAssignments = [];
 
     function loadDlcSelection() {
       try {
@@ -770,6 +797,7 @@
         elements.rollLowestBtn,
         elements.rollAnyBtn,
         elements.partyBtn,
+        elements.partyWinBtn,
         elements.resetBtn
       ].forEach(element => {
         element.disabled = busy;
@@ -870,7 +898,9 @@
     }
 
     function clearPartyResults() {
+      partyAssignments = [];
       elements.partyResults.replaceChildren();
+      elements.partyActions.hidden = true;
     }
 
     function renderPartyUsers() {
@@ -1139,7 +1169,8 @@
       return available[Math.floor(Math.random() * available.length)];
     }
 
-    function renderPartyResults(assignments) {
+    function renderPartyResults(assignments, allowWin = true) {
+      partyAssignments = assignments;
       elements.partyResults.replaceChildren();
       assignments.forEach(({ player, survivor }) => {
         const result = document.createElement("article");
@@ -1164,12 +1195,43 @@
           survivorName.textContent = survivor.survivor_name;
           const level = document.createElement("span");
           level.className = "party-level";
-          level.textContent = `Eclipse ${survivor.level}`;
+          level.textContent = survivor.completed ? "E8 completo ★" : "Eclipse " + survivor.level;
           result.append(avatar, survivorName, level);
         }
 
         elements.partyResults.appendChild(result);
       });
+      elements.partyActions.hidden =
+        !allowWin || assignments.length === 0 || assignments.some(({ survivor }) => survivor === null);
+    }
+
+    async function recordPartyWin() {
+      const eclipseLevelIds = partyAssignments
+        .map(({ survivor }) => survivor?.eclipse_level_id)
+        .filter(Number.isInteger);
+      if (eclipseLevelIds.length !== partyAssignments.length || eclipseLevelIds.length === 0) return;
+
+      setBusy(true);
+      try {
+        const updatedLevels = await api("/eclipse-levels/party-win", {
+          method: "POST",
+          body: JSON.stringify({ eclipse_level_ids: eclipseLevelIds })
+        });
+        const updatedById = new Map(updatedLevels.map(entry => [entry.id, entry]));
+        partyAssignments.forEach(({ survivor }) => {
+          const updated = updatedById.get(survivor.eclipse_level_id);
+          survivor.level = updated.level;
+          survivor.completed = updated.completed;
+        });
+        renderPartyResults(partyAssignments, false);
+        await loadProgress();
+        clearError();
+        showToast("Vitória da party registrada!");
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        setBusy(false);
+      }
     }
 
     async function rollParty(mode) {
@@ -1187,6 +1249,7 @@
       }
 
       setBusy(true);
+      clearPartyResults();
       elements.partyResults.innerHTML = '<p class="loading">Sorteando…</p>';
       try {
         const playerProgress = await Promise.all(
@@ -1336,6 +1399,7 @@
     elements.rollLowestBtn.addEventListener("click", () => rollSurvivor("lowest"));
     elements.rollAnyBtn.addEventListener("click", () => rollSurvivor("any"));
     elements.partyBtn.addEventListener("click", togglePartyMode);
+    elements.partyWinBtn.addEventListener("click", recordPartyWin);
     elements.resetBtn.addEventListener("click", resetCurrentProfile);
 
     initialize();
