@@ -1,104 +1,83 @@
-# Risk of Rain 2 Eclipse Selector
+# RoR2 Eclipse Selector
 
-Single-container Eclipse progress tracker and survivor roulette. FastAPI serves
-both the SQLite-backed API and the static HTML/CSS/JavaScript frontend from one
-Docker image.
+`ror2-selector` is now a **Risk of Rain 2 BepInEx mod** instead of a separate web application.
 
-The first startup seeds the 18 official survivors and the profiles `Jogador 1`
-and `Amigo`. New users and survivors automatically receive the corresponding
-Eclipse progress records.
+The mod opens an in-game Eclipse roulette with **F7**. It reads the currently selected RoR2 profile, discovers survivors from the game's survivor catalog, reads their native Eclipse unlocks, and rolls a survivor for the next Eclipse run.
 
-The frontend bundles all survivor portraits locally. Party mode accepts up to
-four profiles and draws independently for each player, so the same survivor may
-be assigned more than once. A party victory advances every assignment in one
-database transaction. DLC filters apply to the grid, totals, and both roulette
-modes.
+## Features
 
-## Develop
+- In-game survivor roulette (`F7` by default)
+- Uses the active Risk of Rain 2 profile — no separate users or SQLite database
+- Reads native Eclipse progression rather than maintaining duplicate progress
+- Can restrict rolls to unfinished Eclipse survivors
+- Can restrict rolls to survivors unlocked on the current profile
+- Automatically discovers current/DLC survivors through `SurvivorCatalog`
+- Attempts to select the rolled survivor directly on the Eclipse screen
+- Shows the current Eclipse level for every eligible survivor
+- No R2API dependency for the initial version
 
-```bash
-docker compose up --build
+In multiplayer, each player can run the mod and roll independently from their own profile. This replaces the old web app's party-profile system.
+
+## Requirements
+
+- Risk of Rain 2
+- BepInExPack 5.4.2122 or newer compatible release
+- .NET SDK for local development
+
+## Build
+
+The project references the assemblies from your installed copy of Risk of Rain 2.
+
+PowerShell:
+
+```powershell
+$env:ROR2_DIR = "C:\Program Files (x86)\Steam\steamapps\common\Risk of Rain 2"
+dotnet build -c Release
 ```
 
-Open `http://localhost:8000`. Development data is stored in `./data-dev`,
-which is ignored by Git. API documentation is available at
-`http://localhost:8000/api/docs`.
+Nushell:
 
-Run the backend tests from the repository root with:
-
-```bash
-python -m pip install -r backend/requirements-dev.txt
-python -m pytest -q backend/tests
+```nu
+$env.ROR2_DIR = 'C:\Program Files (x86)\Steam\steamapps\common\Risk of Rain 2'
+dotnet build -c Release
 ```
 
-## Release
+If your Steam library uses the default path, setting `ROR2_DIR` is optional.
 
-Version tags trigger `.github/workflows/release.yml`. The workflow builds the
-single image, publishes `latest` and the version tag to GHCR, and creates a
-GitHub Release containing `docker-compose.example.yml`.
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-Published images use `ghcr.io/cirillom/ror2-selector`.
-
-## Deploy
-
-The homeserver does not build application code. Copy
-`docker-compose.example.yml` to
-`/home/cirillo/services/ror2-selector/docker-compose.yml`, then run:
-
-```bash
-cd /home/cirillo/services/ror2-selector
-docker compose pull
-docker compose up -d
-```
-
-Persistent SQLite data lives in `/mnt/hdd/ror2-selector/data`. The container
-joins the external `proxy` network and exposes port 8000 only to that network.
-TLS and public routing remain the responsibility of the homeserver edge proxy.
-
-## Data model
-
-SQLite contains exactly three tables:
-
-- `users`: player profiles
-- `survivors`: playable survivor names, avatar URLs, and DLC names
-- `eclipse_levels`: one row per user/survivor pair
-
-`eclipse_levels.level` is constrained to `1` through `8`. The `completed` flag
-represents winning Eclipse 8; this replaces the original HTML's implicit level
-9 while preserving its progress calculation and completed-card behavior.
-
-Deleting a user or survivor cascades to its progress records. Deleting an
-individual progress record is supported by the CRUD API, but the web app uses
-the automatically provisioned records.
-
-## API routes
-
-Each resource supports create, list, read, update, and delete operations:
+The output DLL is:
 
 ```text
-/api/users
-/api/users/{user_id}
-/api/survivors
-/api/survivors/{survivor_id}
-/api/eclipse-levels
-/api/eclipse-levels/{eclipse_level_id}
+bin/Release/netstandard2.1/Ror2Selector.dll
 ```
 
-Convenience endpoints used by the website:
+## Install locally
+
+Copy the built DLL to a folder inside:
 
 ```text
-GET  /api/users/{user_id}/progress
-POST /api/users/{user_id}/reset
-POST /api/eclipse-levels/party-win
+Risk of Rain 2/BepInEx/plugins/Ror2Selector/
 ```
 
-The party-win endpoint advances up to four assigned players in one transaction;
-winning at Eclipse 8 marks that survivor as completed.
+Then launch the game through your modded profile and press **F7**.
 
-The complete request and response schemas are available in Swagger UI at
-`/api/docs`.
+## Eclipse progress
+
+Risk of Rain 2 stores Eclipse progression as profile unlockables such as `Eclipse.Commando.2`. The mod asks the game's `EclipseRun.GetEclipseBaseUnlockableString` API for the correct survivor prefix at runtime and only falls back to known vanilla identifiers when necessary.
+
+This means the mod does **not** modify or separately persist Eclipse progress. Winning an Eclipse run remains entirely handled by Risk of Rain 2.
+
+## Thunderstore
+
+`manifest.json` contains the package metadata and current BepInEx dependency. A release package should contain:
+
+```text
+manifest.json
+README.md
+CHANGELOG.md
+icon.png
+BepInEx/plugins/Ror2Selector/Ror2Selector.dll
+```
+
+## Previous web app
+
+The old FastAPI/SQLite/Docker implementation remains available in Git history. Version `2.x` is the in-game mod rewrite.

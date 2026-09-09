@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>Ror2Selector</AssemblyName>
+    <RootNamespace>Ror2Selector</RootNamespace>
+    <Version>2.0.0</Version>
+    <Ror2Dir Condition="'$(ROR2_DIR)' != ''">$(ROR2_DIR)</Ror2Dir>
+    <Ror2Dir Condition="'$(Ror2Dir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Risk of Rain 2</Ror2Dir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>$(Ror2Dir)\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RoR2">
+      <HintPath>$(Ror2Dir)\Risk of Rain 2_Data\Managed\RoR2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(Ror2Dir)\Risk of Rain 2_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(Ror2Dir)\Risk of Rain 2_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(Ror2Dir)\Risk of Rain 2_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CheckRor2" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(Ror2Dir)\Risk of Rain 2_Data\Managed\RoR2.dll')"
+           Text="Risk of Rain 2 assemblies not found. Set ROR2_DIR to your game directory." />
+  </Target>
+</Project>
